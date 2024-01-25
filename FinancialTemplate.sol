@@ -47,10 +47,23 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         //可添加其他跟贸易有关的信息
     }
 
+    // 物流信息结构体
+    struct LogisticsInfo {
+        string startPoint;      // 起始点
+        string destination;     // 目的地
+        string transportation;  // 运输方式
+        string cargoStatus;     // 货物状态
+    }
+
 
     mapping(address => EnterpriseInfo) public enterpriseDataSet;//企业注册信息数据集
     mapping (address => uint256) public EnterpriseTradeDataNum;//企业贸易信息条数
     mapping (address => mapping (uint256 => TradeData)) public EnterpriseTradeDataSet;//企业贸易信息数据集
+    mapping (address => mapping (address=>bool)) public isFundingParty;//资金方与企业对应
+    mapping (address => bool) public FPTradeInquiryAccess;//资金方查询贸易数据权限
+    mapping(address => uint256) public EnterpriseLogisticsDataNum;//企业物流信息条数
+    mapping(address => mapping(uint256 => LogisticsInfo)) public EnterpriseLogisticsDataSet;//企业物流信息数据集
+    mapping (address => bool) public FPLogisticsInquiryAccess;//资金方查询物流信息权限
     mapping(uint256 => bytes32) roles;
 
     constructor()AccessControlDefaultAdminRules(3 days,msg.sender){
@@ -67,7 +80,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
 
     //企业注册
     function registerEnterprise(address _enterpriseAddr,string memory regNumber,string memory legalRep,
-        string memory name,string memory regAddress,uint256 establishmentDate)public onlyRole(DEFAULT_ADMIN_ROLE){
+        string memory name,string memory regAddress,uint256 establishmentDate) public onlyRole(DEFAULT_ADMIN_ROLE){
             require(enterpriseDataSet[_enterpriseAddr].isValid==false,
             "Error : This address has already been added as a enterprise.");
             EnterpriseInfo memory newEnterprise = EnterpriseInfo(
@@ -79,8 +92,8 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
 
     //返回新的仓单
     function createNewWarehouseReceipt(string memory _description, string memory _warehouseName,
-        uint256 _quantity, uint256 _storageDate, uint256 _expiryDate, address _owner
-    ) public view onlyRole(ENTERPRISE_ROLE) returns (WarehouseReceipt memory) {
+    uint256 _quantity, uint256 _storageDate, uint256 _expiryDate, address _owner) 
+    public view onlyRole(ENTERPRISE_ROLE) returns (WarehouseReceipt memory) {
         return WarehouseReceipt(_description, _warehouseName, 
         _quantity, _storageDate, _expiryDate, _owner);
     }
@@ -104,8 +117,8 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     }
 
     //企业查询贸易数据
-    // 查询已上链的贸易数据
-    function getTradeData(address _enterpriseAddr, uint256 _tradeId) public view returns (TradeData memory) {
+    function getTradeData(address _enterpriseAddr, uint256 _tradeId) public view 
+    onlyRole(ENTERPRISE_ROLE) returns (TradeData memory) {
         // 确保企业已注册
         require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
 
@@ -114,6 +127,91 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         
         return EnterpriseTradeDataSet[_enterpriseAddr][_tradeId];
     }
+
+    // 授予资金方贸易数据查询权限
+    function grantTradeDataAccess(address _fundingPartyAddr, address _enterpriseAddr) public onlyRole(ENTERPRISE_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        // 确保地址是企业资金方
+        require(hasRole(FUNDING_PARTY_ROLE, _fundingPartyAddr) 
+        && isFundingParty[_fundingPartyAddr][_enterpriseAddr], "Error: _fundingPartyAddr not FUNDING_PARTY_ROLE");
+        
+        FPTradeInquiryAccess[_fundingPartyAddr]=true;
+    }
+
+    // 资金方查询贸易数据
+    function getTradeDataForFundingParty(address _fundingPartyAddr, address _enterpriseAddr, uint256 _tradeId) public view 
+    onlyRole(FUNDING_PARTY_ROLE) returns (TradeData memory) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        // 确保有权限
+        require(FPTradeInquiryAccess[_fundingPartyAddr], "The Funding Party has no Trade Data access");
+
+        uint256 numTradeData = EnterpriseTradeDataNum[_enterpriseAddr];
+        require(_tradeId < numTradeData, "Error: Invalid tradeId");
+
+        return EnterpriseTradeDataSet[_enterpriseAddr][_tradeId];
+    }
+
+    //物流信息上链
+    function uploadLogisticsInfo(address _enterpriseAddr, string memory _startPoint,
+        string memory _destination, string memory _transportation, string memory _cargoStatus) 
+        public onlyRole(ENTERPRISE_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered.");
+
+        EnterpriseLogisticsDataSet[_enterpriseAddr][EnterpriseLogisticsDataNum[_enterpriseAddr]] = 
+        LogisticsInfo(_startPoint, _destination, _transportation, _cargoStatus);
+
+        // 更新物流信息条数
+        EnterpriseLogisticsDataNum[_enterpriseAddr]++;
+    }
+
+    //企业查询物流信息
+    function getLogisticsInfoForEnterprise(address _enterpriseAddr, uint256 _logisticsId) 
+    public view onlyRole(ENTERPRISE_ROLE) returns (LogisticsInfo memory) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        
+        uint256 numLogisticsData = EnterpriseLogisticsDataNum[_enterpriseAddr];
+        require(_logisticsId < numLogisticsData, "Error: Invalid logisticsId");
+
+        return EnterpriseLogisticsDataSet[_enterpriseAddr][_logisticsId];
+    }
+
+    //授予资金方物流信息查询权限
+    function grantLogisticsAccess(address _fundingPartyAddr, address _enterpriseAddr) public onlyRole(ENTERPRISE_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        // 确保地址是企业资金方
+        require(hasRole(FUNDING_PARTY_ROLE, _fundingPartyAddr) 
+        && isFundingParty[_fundingPartyAddr][_enterpriseAddr], "Error: _fundingPartyAddr not FUNDING_PARTY_ROLE");
+        
+        FPLogisticsInquiryAccess[_fundingPartyAddr]=true;
+    }
+
+    //资金方查询物流信息
+    function getLogisticsInfoForFundingParty(address _fundingPartyAddr, address _enterpriseAddr,
+    uint256 _logisticsId) public view onlyRole(FUNDING_PARTY_ROLE) returns (LogisticsInfo memory) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        // 确保有权限
+        require(FPLogisticsInquiryAccess[_fundingPartyAddr], "The Funding Party has no Logistics access");
+
+        uint256 numLogisticsData = EnterpriseLogisticsDataNum[_enterpriseAddr];
+        require(_logisticsId < numLogisticsData, "Error: Invalid logisticsId");
+
+        return EnterpriseLogisticsDataSet[_enterpriseAddr][_logisticsId];
+    }
+
+
+
+
+
+
+
+
+
 
 
 
