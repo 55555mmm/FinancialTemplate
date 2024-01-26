@@ -8,7 +8,10 @@ import {AccessControlDefaultAdminRules} from "@openzeppelin/contracts/access/ext
 contract FinancialTemplate is AccessControlDefaultAdminRules{
     bytes32 public constant ENTERPRISE_ROLE = keccak256("ENTERPRISE_ROLE");//企业
     bytes32 public constant FUNDING_PARTY_ROLE = keccak256("FUNDING_PARTY_ROLE");//资金方
+    bytes32 public constant AUCTION_PUBLISHER_ROLE = keccak256("AUCTION_PUBLISHER_ROLE"); // 拍卖信息发布者
+    bytes32 public constant BIDDER_ROLE = keccak256("BIDDER_ROLE"); // 投标与竞标者
     uint256 public nextRoleId;
+    uint256 public nextAuctionId;
 
     // 企业注册信息（企业身份）
     struct EnterpriseInfo {
@@ -84,8 +87,46 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         Rejected     // 已拒绝
     }
 
+    // 参与拍卖的用户信息
+    struct UserInfo {
+        bytes32 encryptedId; // 加密后的用户ID(用地址做hash)
+        string username;
+        string contactInfo;//联系信息
+        bool isRegistered;
+    }
 
+    // 拍卖信息
+    struct AuctionInfo {
+        uint256 auctionId;
+        string itemDescription;
+        uint256 startPrice;//起拍价
+        bool isOpen; //拍卖是否开放
+        bytes32 encryptedWinningBidder; //加密后的中标者信息 
+        uint256 winningBid; //中标价格
+        uint256 depositAmount; //定金数量
+    }
 
+    //定金信息以及支付信息
+    struct Deposit {
+        uint256 auctionId;//拍卖ID
+        uint256 depositAmount;
+        uint256 paymentDate;
+        bool isPaid;
+    }
+
+    //投标信息
+    struct Bid {
+        uint256 auctionId;
+        uint256 bid;
+        address bidder;
+    }
+
+    //转账信息
+    struct Transfer{
+        uint256 auctionId;
+        uint256 transferAmount;
+        uint256 paymentDate;
+    }
 
     mapping(address => EnterpriseInfo) public enterpriseDataSet;//企业注册信息数据集
     mapping (address => uint256) public EnterpriseTradeDataNum;//企业贸易信息条数
@@ -97,14 +138,23 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     mapping (address => uint256) public enterpriseCreditRating;//企业信用等级
     mapping(address => uint256) public EnterpriseLoanApplicationNum;//企业贷款申请信息条数
     mapping(address => mapping(uint256 => LoanApplication)) public EnterpriseLoanApplicationDataSet;//企业贷款申请数据集
-
+    mapping(address => UserInfo) public users;//拍卖用户集合
+    mapping(uint256 => AuctionInfo) public auctions;//拍卖信息集合
+    mapping(address => Deposit[]) public userDeposits;//用户定金信息
+    mapping(uint256 => Bid[]) public bids;//投标信息
+    mapping (address=> Transfer[]) transfers;//转账信息
     mapping(uint256 => bytes32) roles;
+
+    event AuctionPublished(uint256 indexed auctionId, string itemDescription, uint256 startPrice, bool isopen);//拍卖信息发布 
+    event AuctionClosed(uint256 indexed auctionId, bytes encryptedWinningBidder, uint256 winningBid);//拍卖结束
 
     constructor()AccessControlDefaultAdminRules(3 days,msg.sender){
         roles[0]=ENTERPRISE_ROLE;
         roles[1]=FUNDING_PARTY_ROLE;
+        roles[2]=AUCTION_PUBLISHER_ROLE;
+        roles[3]=BIDDER_ROLE;
 
-        nextRoleId = 2;//增加角色记得修改
+        nextRoleId = 4;//增加角色记得修改
     }
 
     //checkRole函数用于检查给定的地址是否拥有某个角色权限
@@ -312,28 +362,81 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         loanApplication.repaymentRecord.repaymentDate = block.timestamp;
     }
 
+    // 拍卖用户注册(加密账号)
+    function registerUser(address _userAddr, string memory _username, string memory _contactInfo, bool isPublished) public {
+        require(!users[msg.sender].isRegistered, "User is already registered");
 
+        UserInfo memory newUser = UserInfo(keccak256(abi.encodePacked(_userAddr)), _username, _contactInfo, true);
+        users[_userAddr]=newUser;
 
+        if(isPublished)grantRole(AUCTION_PUBLISHER_ROLE, _userAddr);
+        grantRole(BIDDER_ROLE, _userAddr);
+    }
 
+    // 拍卖信息发布者发布拍卖活动
+    function publishAuction(string memory _itemDescription, uint256 _startingPrice, uint256 _depositAmount) 
+    public onlyRole(AUCTION_PUBLISHER_ROLE) {
+        uint256 auctionId = getNextAuctionId()-1;//从0开始
+        auctions[auctionId] = AuctionInfo(auctionId, _itemDescription, _startingPrice, 
+        true, bytes32(""), 0, _depositAmount);
 
+        // 拍卖信息发布事件通知
+        emit AuctionPublished(auctionId, _itemDescription, _startingPrice, true);
+    }
 
+    // 获取下一个拍卖ID
+    function getNextAuctionId() internal returns (uint256) {
+        nextAuctionId++;
+        return nextAuctionId;
+    }
 
+    //定金信息上链
+    function payDeposit(uint256 _auctionId) external onlyRole(BIDDER_ROLE) {
+        AuctionInfo storage auction = auctions[_auctionId];
+        require(auction.isOpen, "Auction closed");
+    
+        Deposit memory depositRecord = Deposit(_auctionId, auction.depositAmount, block.timestamp, true);
+        userDeposits[msg.sender].push(depositRecord);
+    }
 
+    //投标者投标
+    function placeBid(uint256 _auctionId, uint256 bid) external onlyRole(BIDDER_ROLE) {
+        AuctionInfo storage auction = auctions[_auctionId];
+        require(auction.isOpen, "Auction closed");
+        bids[_auctionId].push(Bid(_auctionId, bid, msg.sender));
+    }
 
+    //最高出价筛选和中标上链
+    function closeAuction(uint256 _auctionId, bytes calldata _encryptedWinningBidder) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        AuctionInfo storage auction = auctions[_auctionId];
+        require(!auction.isOpen, "Auction already closed");
 
+        uint256 highestBid = 0;
+        address winningBidder = address(0);
 
+        for (uint256 i = 0; i < bids[_auctionId].length; i++) {
+            if (bids[_auctionId][i].bid > highestBid) {
+                highestBid = bids[_auctionId][i].bid;
+                winningBidder = bids[_auctionId][i].bidder;
+            }
+        }
 
+        auction.isOpen = false;
+        auction.encryptedWinningBidder =keccak256(abi.encodePacked(winningBidder));
+        auction.winningBid = highestBid;
 
+        emit AuctionClosed(_auctionId, _encryptedWinningBidder, highestBid);
 
+        // 善后工作
+        uint256 deposit = auctions[_auctionId].depositAmount;
+        for (uint256 i = 0; i < bids[_auctionId].length; i++) {
+            if (bids[_auctionId][i].bidder != winningBidder) {
+                transfers[bids[_auctionId][i].bidder].push(Transfer(_auctionId, deposit, block.timestamp));
+            }else{
+                transfers[bids[_auctionId][i].bidder].push(Transfer(_auctionId, deposit-highestBid, block.timestamp));
+            }
+        }
 
-
-
-
-
-
-
-
-
-
+    }
 
 }
