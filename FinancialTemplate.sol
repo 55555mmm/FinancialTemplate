@@ -10,7 +10,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     bytes32 public constant FUNDING_PARTY_ROLE = keccak256("FUNDING_PARTY_ROLE");//资金方
     uint256 public nextRoleId;
 
-    // 企业注册信息（企业身份）结构体
+    // 企业注册信息（企业身份）
     struct EnterpriseInfo {
         string registrationNumber;  // 注册号
         string legalRepresentative; // 法定代表人
@@ -21,7 +21,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     }
 
 
-    // 仓单结构体
+    // 仓单
     struct WarehouseReceipt {
         string description;   // 货物描述
         string warehouseName; // 仓库名称
@@ -31,7 +31,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         address owner;        // （货物）所有权持有人
     }
 
-    // 票据结构体
+    // 票据
     struct BillOfExchange {
         address drawer;        // 出票人
         address payee;         // 收款人
@@ -40,14 +40,14 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         string goodsDescription; // 货物描述
     }
 
-    // 贸易数据信息结构体
+    // 贸易数据信息
     struct TradeData {
         WarehouseReceipt warehouseReceipt; // 仓单信息
         BillOfExchange billOfExchange;     // 票据信息
         //可添加其他跟贸易有关的信息
     }
 
-    // 物流信息结构体
+    // 物流信息
     struct LogisticsInfo {
         string startPoint;      // 起始点
         string destination;     // 目的地
@@ -55,15 +55,49 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         string cargoStatus;     // 货物状态
     }
 
+    // 企业还款记录
+    struct RepaymentRecord {
+        uint256 amount;         // 还款金额
+        uint256 repaymentDate;  // 还款日期，可使用 Unix 时间戳表示
+    }
+
+    //资金方放款记录
+    struct DisbursementRecord {
+        uint256 amount;         // 放款金额
+        uint256 disbursementDate; // 放款日期，可使用 Unix 时间戳表示
+    }
+
+    // 贷款申请信息
+    struct LoanApplication {
+        uint256 requestedAmount;   // 请求的贷款金额
+        string purpose;            // 贷款用途
+        string repaymentPlan;      // 还款计划
+        LoanApplicationStatus status; // 贷款申请状态
+        DisbursementRecord disbursementRecord;//资金方放款
+        RepaymentRecord repaymentRecord;//企业还款
+    }
+
+    //贷款申请审核状态
+    enum LoanApplicationStatus {
+        Pending,     // 待审核
+        Approved,    // 已批准
+        Rejected     // 已拒绝
+    }
+
+
+
 
     mapping(address => EnterpriseInfo) public enterpriseDataSet;//企业注册信息数据集
     mapping (address => uint256) public EnterpriseTradeDataNum;//企业贸易信息条数
     mapping (address => mapping (uint256 => TradeData)) public EnterpriseTradeDataSet;//企业贸易信息数据集
-    mapping (address => mapping (address=>bool)) public isFundingParty;//资金方与企业对应
     mapping (address => bool) public FPTradeInquiryAccess;//资金方查询贸易数据权限
     mapping(address => uint256) public EnterpriseLogisticsDataNum;//企业物流信息条数
     mapping(address => mapping(uint256 => LogisticsInfo)) public EnterpriseLogisticsDataSet;//企业物流信息数据集
     mapping (address => bool) public FPLogisticsInquiryAccess;//资金方查询物流信息权限
+    mapping (address => uint256) public enterpriseCreditRating;//企业信用等级
+    mapping(address => uint256) public EnterpriseLoanApplicationNum;//企业贷款申请信息条数
+    mapping(address => mapping(uint256 => LoanApplication)) public EnterpriseLoanApplicationDataSet;//企业贷款申请数据集
+
     mapping(uint256 => bytes32) roles;
 
     constructor()AccessControlDefaultAdminRules(3 days,msg.sender){
@@ -80,17 +114,15 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
 
     //企业注册
     function registerEnterprise(address _enterpriseAddr,string memory regNumber,string memory legalRep,
-        string memory name,string memory regAddress,uint256 establishmentDate) public onlyRole(DEFAULT_ADMIN_ROLE){
-            require(enterpriseDataSet[_enterpriseAddr].isValid==false,
-            "Error : This address has already been added as a enterprise.");
-            EnterpriseInfo memory newEnterprise = EnterpriseInfo(
-                regNumber,legalRep,name,regAddress,establishmentDate,true
-            );
-            enterpriseDataSet[_enterpriseAddr]=newEnterprise;
-            grantRole(ENTERPRISE_ROLE, _enterpriseAddr);
+    string memory name,string memory regAddress,uint256 establishmentDate) public onlyRole(DEFAULT_ADMIN_ROLE){
+        require(enterpriseDataSet[_enterpriseAddr].isValid==false,
+        "Error : This address has already been added as a enterprise.");
+        EnterpriseInfo memory newEnterprise = EnterpriseInfo(regNumber,legalRep,name,regAddress,establishmentDate,true);
+        enterpriseDataSet[_enterpriseAddr]=newEnterprise;
+        grantRole(ENTERPRISE_ROLE, _enterpriseAddr);
     }
 
-    //返回新的仓单
+    // 返回新的仓单
     function createNewWarehouseReceipt(string memory _description, string memory _warehouseName,
     uint256 _quantity, uint256 _storageDate, uint256 _expiryDate, address _owner) 
     public view onlyRole(ENTERPRISE_ROLE) returns (WarehouseReceipt memory) {
@@ -133,8 +165,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         // 确保企业已注册
         require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
         // 确保地址是企业资金方
-        require(hasRole(FUNDING_PARTY_ROLE, _fundingPartyAddr) 
-        && isFundingParty[_fundingPartyAddr][_enterpriseAddr], "Error: _fundingPartyAddr not FUNDING_PARTY_ROLE");
+        require(hasRole(FUNDING_PARTY_ROLE, _fundingPartyAddr), "Error: _fundingPartyAddr not FUNDING_PARTY_ROLE");
         
         FPTradeInquiryAccess[_fundingPartyAddr]=true;
     }
@@ -183,9 +214,8 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     function grantLogisticsAccess(address _fundingPartyAddr, address _enterpriseAddr) public onlyRole(ENTERPRISE_ROLE) {
         // 确保企业已注册
         require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
-        // 确保地址是企业资金方
-        require(hasRole(FUNDING_PARTY_ROLE, _fundingPartyAddr) 
-        && isFundingParty[_fundingPartyAddr][_enterpriseAddr], "Error: _fundingPartyAddr not FUNDING_PARTY_ROLE");
+        // 确保地址是资金方角色
+        require(hasRole(FUNDING_PARTY_ROLE, _fundingPartyAddr), "Error: _fundingPartyAddr not FUNDING_PARTY_ROLE");
         
         FPLogisticsInquiryAccess[_fundingPartyAddr]=true;
     }
@@ -203,6 +233,94 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
 
         return EnterpriseLogisticsDataSet[_enterpriseAddr][_logisticsId];
     }
+
+    //资金方评估企业信用等级并将评估结果上链
+    function EvaluateCreditRating(address _enterpriseAddr, uint256 credit)public onlyRole(FUNDING_PARTY_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        enterpriseCreditRating[_enterpriseAddr]=credit;
+    }
+
+    // 上链企业贷款申请信息
+    function applyForLoan(address _enterpriseAddr, uint256 _requestedAmount, string memory _purpose,
+        string memory _repaymentPlan) public onlyRole(ENTERPRISE_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered.");
+
+        DisbursementRecord memory newDR = DisbursementRecord(0, block.timestamp);
+        RepaymentRecord memory newRR = RepaymentRecord(0, block.timestamp);        
+        EnterpriseLoanApplicationDataSet[_enterpriseAddr][EnterpriseLoanApplicationNum[_enterpriseAddr]] = 
+        LoanApplication(_requestedAmount, _purpose, _repaymentPlan, LoanApplicationStatus.Pending, newDR, newRR);
+        EnterpriseLoanApplicationNum[_enterpriseAddr]++;
+    }
+
+    // 企业查询贷款申请状态(返回整个申请)
+    function getLoanApplication(address _enterpriseAddr, uint256 _loanAppId) 
+    public view onlyRole(ENTERPRISE_ROLE) returns (LoanApplication memory) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered");
+        
+        uint256 numLoanApps = EnterpriseLoanApplicationNum[_enterpriseAddr];
+        require(_loanAppId < numLoanApps, "Error: Invalid loanAppId");
+
+        return EnterpriseLoanApplicationDataSet[_enterpriseAddr][_loanAppId];
+    }
+
+    // 资金方评估审核贷款申请
+    function evaluateLoanApplication(address _enterpriseAddr, uint256 _loanAppId, bool _isApproved) 
+    public onlyRole(FUNDING_PARTY_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered.");
+        uint256 numLoanApps = EnterpriseLoanApplicationNum[_enterpriseAddr];
+        require(_loanAppId < numLoanApps, "Error: Invalid loanAppId");
+
+        LoanApplication storage loanApplication = EnterpriseLoanApplicationDataSet[_enterpriseAddr][_loanAppId];
+        if (_isApproved) {
+            loanApplication.status = LoanApplicationStatus.Approved;
+        } else {
+            loanApplication.status = LoanApplicationStatus.Rejected;
+        }
+    }
+
+    //资金方放款记录上链
+    function disburseLoan(address _enterpriseAddr, uint256 _loanAppId, uint256 _amount) 
+    public onlyRole(FUNDING_PARTY_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered.");
+        uint256 numLoanApps = EnterpriseLoanApplicationNum[_enterpriseAddr];
+        require(_loanAppId < numLoanApps, "Error: Invalid loanAppId");
+        
+        LoanApplication storage loanApplication = EnterpriseLoanApplicationDataSet[_enterpriseAddr][_loanAppId];
+        require(loanApplication.status == LoanApplicationStatus.Approved, "Error: Loan not approved.");
+        
+        loanApplication.disbursementRecord.amount+=_amount;
+        loanApplication.disbursementRecord.disbursementDate = block.timestamp;
+    }
+
+    //企业还款记录上链
+    function repayLoan(address _enterpriseAddr, uint256 _loanAppId, uint256 _amount) 
+    public onlyRole(ENTERPRISE_ROLE) {
+        // 确保企业已注册
+        require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered.");
+        uint256 numLoanApps = EnterpriseLoanApplicationNum[_enterpriseAddr];
+        require(_loanAppId < numLoanApps, "Error: Invalid loanAppId");
+        
+        LoanApplication storage loanApplication = EnterpriseLoanApplicationDataSet[_enterpriseAddr][_loanAppId];
+        require(loanApplication.status == LoanApplicationStatus.Approved, "Error: Loan not approved.");
+        
+        loanApplication.repaymentRecord.amount += _amount;
+        loanApplication.repaymentRecord.repaymentDate = block.timestamp;
+    }
+
+
+
+
+
+
+
+
+
+
 
 
 
