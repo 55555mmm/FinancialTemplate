@@ -406,7 +406,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         bids[_auctionId].push(Bid(_auctionId, bid, msg.sender));
     }
 
-    //最高出价筛选和中标上链
+    //最高出价筛选和中标上链，最后转账善后
     function closeAuction(uint256 _auctionId, bytes calldata _encryptedWinningBidder) external onlyRole(DEFAULT_ADMIN_ROLE) {
         AuctionInfo storage auction = auctions[_auctionId];
         require(!auction.isOpen, "Auction already closed");
