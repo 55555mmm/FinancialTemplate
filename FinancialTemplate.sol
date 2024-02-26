@@ -28,9 +28,7 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     struct WarehouseReceipt {
         string description;   // 货物描述
         string warehouseName; // 仓库名称
-        uint256 quantity;     // 货物数量
         uint256 storageDate;  // 存储日期
-        uint256 expiryDate;   // 仓单有效期
         address owner;        // （货物）所有权持有人
     }
 
@@ -143,10 +141,11 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     mapping(address => Deposit[]) public userDeposits;//用户定金信息
     mapping(uint256 => Bid[]) public bids;//投标信息
     mapping (address=> Transfer[]) transfers;//转账信息
+    mapping (address=>mapping (uint256=>bool)) isTransfer;//确保转账次数不重复
     mapping(uint256 => bytes32) roles;
 
     event AuctionPublished(uint256 indexed auctionId, string itemDescription, uint256 startPrice, bool isopen);//拍卖信息发布 
-    event AuctionClosed(uint256 indexed auctionId, bytes encryptedWinningBidder, uint256 winningBid);//拍卖结束
+    event AuctionClosed(uint256 indexed auctionId, uint256 winningBid);//拍卖结束
 
     constructor()AccessControlDefaultAdminRules(3 days,msg.sender){
         roles[0]=ENTERPRISE_ROLE;
@@ -172,12 +171,11 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         grantRole(ENTERPRISE_ROLE, _enterpriseAddr);
     }
 
-    // 返回新的仓单
+   // 返回新的仓单
     function createNewWarehouseReceipt(string memory _description, string memory _warehouseName,
-    uint256 _quantity, uint256 _storageDate, uint256 _expiryDate, address _owner) 
+    uint256 _storageDate,  address _owner) 
     public view onlyRole(ENTERPRISE_ROLE) returns (WarehouseReceipt memory) {
-        return WarehouseReceipt(_description, _warehouseName, 
-        _quantity, _storageDate, _expiryDate, _owner);
+        return WarehouseReceipt(_description, _warehouseName, _storageDate,_owner);
     }
 
     // 返回新的票据
@@ -188,12 +186,15 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
     }
 
     //贸易信息上链
-    function uploadTradeData(address _enterpriseAddr, WarehouseReceipt memory _warehouseReceipt,
-    BillOfExchange memory _billOfExchange) public onlyRole(ENTERPRISE_ROLE) {
+    function uploadTradeData(address _enterpriseAddr, string memory _description, string memory _warehouseName,
+    uint256 _storageDate, address _owner,address _drawer, address _payee, uint256 _amount, 
+    uint256 _paymentDate, string memory _goodsDescription) public onlyRole(ENTERPRISE_ROLE) {
         // 确保企业已注册
         require(enterpriseDataSet[_enterpriseAddr].isValid, "Error: Enterprise not registered.");
-        EnterpriseTradeDataSet[_enterpriseAddr][EnterpriseTradeDataNum[_enterpriseAddr]].warehouseReceipt = _warehouseReceipt;
-        EnterpriseTradeDataSet[_enterpriseAddr][EnterpriseTradeDataNum[_enterpriseAddr]].billOfExchange = _billOfExchange;
+        EnterpriseTradeDataSet[_enterpriseAddr][EnterpriseTradeDataNum[_enterpriseAddr]].warehouseReceipt = 
+        WarehouseReceipt(_description,_warehouseName,_storageDate,_owner);
+        EnterpriseTradeDataSet[_enterpriseAddr][EnterpriseTradeDataNum[_enterpriseAddr]].billOfExchange = 
+        BillOfExchange(_drawer,_payee,_amount,_paymentDate,_goodsDescription);
         // 更新贸易信息条数
         EnterpriseTradeDataNum[_enterpriseAddr]++;
     }
@@ -406,34 +407,42 @@ contract FinancialTemplate is AccessControlDefaultAdminRules{
         bids[_auctionId].push(Bid(_auctionId, bid, msg.sender));
     }
 
-    //最高出价筛选和中标上链，最后转账善后
-    function closeAuction(uint256 _auctionId, bytes calldata _encryptedWinningBidder) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        AuctionInfo storage auction = auctions[_auctionId];
-        require(!auction.isOpen, "Auction already closed");
-
-        uint256 highestBid = 0;
-        address winningBidder = address(0);
-
+     //最高出价筛选和中标上链，最后转账善后
+    function closeAuction(uint256 _auctionId) external{
+        require(auctions[_auctionId].isOpen, "Auction already closed");
+        if (bids[_auctionId].length==0){
+             auctions[_auctionId].isOpen = false;
+             return;
+        }
+        uint256 highestBid = bids[_auctionId][0].bid;
+        address winningBidder = bids[_auctionId][0].bidder;
+       
         for (uint256 i = 0; i < bids[_auctionId].length; i++) {
             if (bids[_auctionId][i].bid > highestBid) {
                 highestBid = bids[_auctionId][i].bid;
                 winningBidder = bids[_auctionId][i].bidder;
             }
         }
-
-        auction.isOpen = false;
-        auction.encryptedWinningBidder =keccak256(abi.encodePacked(winningBidder));
-        auction.winningBid = highestBid;
-
-        emit AuctionClosed(_auctionId, _encryptedWinningBidder, highestBid);
+        
+        auctions[_auctionId].isOpen = false;
+        auctions[_auctionId].encryptedWinningBidder =keccak256(abi.encodePacked(winningBidder));
+        auctions[_auctionId].winningBid = highestBid;
+       
+        emit AuctionClosed(_auctionId, highestBid);
 
         // 善后工作
         uint256 deposit = auctions[_auctionId].depositAmount;
         for (uint256 i = 0; i < bids[_auctionId].length; i++) {
             if (bids[_auctionId][i].bidder != winningBidder) {
-                transfers[bids[_auctionId][i].bidder].push(Transfer(_auctionId, deposit, block.timestamp));
+                if (!isTransfer[bids[_auctionId][i].bidder][_auctionId]){
+                    transfers[bids[_auctionId][i].bidder].push(Transfer(_auctionId, deposit, block.timestamp));
+                    isTransfer[bids[_auctionId][i].bidder][_auctionId]=true;
+                }
             }else{
-                transfers[bids[_auctionId][i].bidder].push(Transfer(_auctionId, deposit-highestBid, block.timestamp));
+                 if (!isTransfer[bids[_auctionId][i].bidder][_auctionId]){
+                    transfers[bids[_auctionId][i].bidder].push(Transfer(_auctionId, highestBid, block.timestamp));
+                    isTransfer[bids[_auctionId][i].bidder][_auctionId]=true;
+                }
             }
         }
 

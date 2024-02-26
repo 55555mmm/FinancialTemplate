@@ -1,6 +1,6 @@
 {
 	"compiler": {
-		"version": "0.8.22+commit.4fc1097e"
+		"version": "0.8.24+commit.e11b9ed9"
 	},
 	"language": "Solidity",
 	"output": {
@@ -73,6 +73,56 @@
 				],
 				"name": "SafeCastOverflowedUintDowncast",
 				"type": "error"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "uint256",
+						"name": "auctionId",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "winningBid",
+						"type": "uint256"
+					}
+				],
+				"name": "AuctionClosed",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "uint256",
+						"name": "auctionId",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "itemDescription",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "startPrice",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "bool",
+						"name": "isopen",
+						"type": "bool"
+					}
+				],
+				"name": "AuctionPublished",
+				"type": "event"
 			},
 			{
 				"anonymous": false,
@@ -201,6 +251,32 @@
 			},
 			{
 				"inputs": [],
+				"name": "AUCTION_PUBLISHER_ROLE",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "BIDDER_ROLE",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
 				"name": "DEFAULT_ADMIN_ROLE",
 				"outputs": [
 					{
@@ -220,64 +296,6 @@
 						"internalType": "bytes32",
 						"name": "",
 						"type": "bytes32"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"name": "EnterpriseLogisticsDataNum",
-				"outputs": [
-					{
-						"internalType": "uint256",
-						"name": "",
-						"type": "uint256"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					},
-					{
-						"internalType": "uint256",
-						"name": "",
-						"type": "uint256"
-					}
-				],
-				"name": "EnterpriseLogisticsDataSet",
-				"outputs": [
-					{
-						"internalType": "string",
-						"name": "startPoint",
-						"type": "string"
-					},
-					{
-						"internalType": "string",
-						"name": "destination",
-						"type": "string"
-					},
-					{
-						"internalType": "string",
-						"name": "transportation",
-						"type": "string"
-					},
-					{
-						"internalType": "string",
-						"name": "cargoStatus",
-						"type": "string"
 					}
 				],
 				"stateMutability": "view",
@@ -331,17 +349,7 @@
 							},
 							{
 								"internalType": "uint256",
-								"name": "quantity",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
 								"name": "storageDate",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
-								"name": "expiryDate",
 								"type": "uint256"
 							},
 							{
@@ -385,25 +393,6 @@
 						"internalType": "struct FinancialTemplate.BillOfExchange",
 						"name": "billOfExchange",
 						"type": "tuple"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"name": "FPLogisticsInquiryAccess",
-				"outputs": [
-					{
-						"internalType": "bool",
-						"name": "",
-						"type": "bool"
 					}
 				],
 				"stateMutability": "view",
@@ -585,17 +574,7 @@
 					},
 					{
 						"internalType": "uint256",
-						"name": "_quantity",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
 						"name": "_storageDate",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "_expiryDate",
 						"type": "uint256"
 					},
 					{
@@ -620,17 +599,7 @@
 							},
 							{
 								"internalType": "uint256",
-								"name": "quantity",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
 								"name": "storageDate",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
-								"name": "expiryDate",
 								"type": "uint256"
 							},
 							{
@@ -733,103 +702,6 @@
 			{
 				"inputs": [
 					{
-						"internalType": "address",
-						"name": "_enterpriseAddr",
-						"type": "address"
-					},
-					{
-						"internalType": "uint256",
-						"name": "_logisticsId",
-						"type": "uint256"
-					}
-				],
-				"name": "getLogisticsInfoForEnterprise",
-				"outputs": [
-					{
-						"components": [
-							{
-								"internalType": "string",
-								"name": "startPoint",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "destination",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "transportation",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "cargoStatus",
-								"type": "string"
-							}
-						],
-						"internalType": "struct FinancialTemplate.LogisticsInfo",
-						"name": "",
-						"type": "tuple"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "_fundingPartyAddr",
-						"type": "address"
-					},
-					{
-						"internalType": "address",
-						"name": "_enterpriseAddr",
-						"type": "address"
-					},
-					{
-						"internalType": "uint256",
-						"name": "_logisticsId",
-						"type": "uint256"
-					}
-				],
-				"name": "getLogisticsInfoForFundingParty",
-				"outputs": [
-					{
-						"components": [
-							{
-								"internalType": "string",
-								"name": "startPoint",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "destination",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "transportation",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "cargoStatus",
-								"type": "string"
-							}
-						],
-						"internalType": "struct FinancialTemplate.LogisticsInfo",
-						"name": "",
-						"type": "tuple"
-					}
-				],
-				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
 						"internalType": "bytes32",
 						"name": "role",
 						"type": "bytes32"
@@ -877,17 +749,7 @@
 									},
 									{
 										"internalType": "uint256",
-										"name": "quantity",
-										"type": "uint256"
-									},
-									{
-										"internalType": "uint256",
 										"name": "storageDate",
-										"type": "uint256"
-									},
-									{
-										"internalType": "uint256",
-										"name": "expiryDate",
 										"type": "uint256"
 									},
 									{
@@ -977,17 +839,7 @@
 									},
 									{
 										"internalType": "uint256",
-										"name": "quantity",
-										"type": "uint256"
-									},
-									{
-										"internalType": "uint256",
 										"name": "storageDate",
-										"type": "uint256"
-									},
-									{
-										"internalType": "uint256",
-										"name": "expiryDate",
 										"type": "uint256"
 									},
 									{
@@ -1039,24 +891,6 @@
 					}
 				],
 				"stateMutability": "view",
-				"type": "function"
-			},
-			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "_fundingPartyAddr",
-						"type": "address"
-					},
-					{
-						"internalType": "address",
-						"name": "_enterpriseAddr",
-						"type": "address"
-					}
-				],
-				"name": "grantLogisticsAccess",
-				"outputs": [],
-				"stateMutability": "nonpayable",
 				"type": "function"
 			},
 			{
@@ -1120,24 +954,13 @@
 				"type": "function"
 			},
 			{
-				"inputs": [
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					},
-					{
-						"internalType": "address",
-						"name": "",
-						"type": "address"
-					}
-				],
-				"name": "isFundingParty",
+				"inputs": [],
+				"name": "nextAuctionId",
 				"outputs": [
 					{
-						"internalType": "bool",
+						"internalType": "uint256",
 						"name": "",
-						"type": "bool"
+						"type": "uint256"
 					}
 				],
 				"stateMutability": "view",
@@ -1314,105 +1137,48 @@
 					},
 					{
 						"internalType": "string",
-						"name": "_startPoint",
+						"name": "_description",
 						"type": "string"
 					},
 					{
 						"internalType": "string",
-						"name": "_destination",
+						"name": "_warehouseName",
 						"type": "string"
 					},
 					{
-						"internalType": "string",
-						"name": "_transportation",
-						"type": "string"
+						"internalType": "uint256",
+						"name": "_storageDate",
+						"type": "uint256"
 					},
-					{
-						"internalType": "string",
-						"name": "_cargoStatus",
-						"type": "string"
-					}
-				],
-				"name": "uploadLogisticsInfo",
-				"outputs": [],
-				"stateMutability": "nonpayable",
-				"type": "function"
-			},
-			{
-				"inputs": [
 					{
 						"internalType": "address",
-						"name": "_enterpriseAddr",
+						"name": "_owner",
 						"type": "address"
 					},
 					{
-						"components": [
-							{
-								"internalType": "string",
-								"name": "description",
-								"type": "string"
-							},
-							{
-								"internalType": "string",
-								"name": "warehouseName",
-								"type": "string"
-							},
-							{
-								"internalType": "uint256",
-								"name": "quantity",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
-								"name": "storageDate",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
-								"name": "expiryDate",
-								"type": "uint256"
-							},
-							{
-								"internalType": "address",
-								"name": "owner",
-								"type": "address"
-							}
-						],
-						"internalType": "struct FinancialTemplate.WarehouseReceipt",
-						"name": "_warehouseReceipt",
-						"type": "tuple"
+						"internalType": "address",
+						"name": "_drawer",
+						"type": "address"
 					},
 					{
-						"components": [
-							{
-								"internalType": "address",
-								"name": "drawer",
-								"type": "address"
-							},
-							{
-								"internalType": "address",
-								"name": "payee",
-								"type": "address"
-							},
-							{
-								"internalType": "uint256",
-								"name": "amount",
-								"type": "uint256"
-							},
-							{
-								"internalType": "uint256",
-								"name": "paymentDate",
-								"type": "uint256"
-							},
-							{
-								"internalType": "string",
-								"name": "goodsDescription",
-								"type": "string"
-							}
-						],
-						"internalType": "struct FinancialTemplate.BillOfExchange",
-						"name": "_billOfExchange",
-						"type": "tuple"
+						"internalType": "address",
+						"name": "_payee",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_amount",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_paymentDate",
+						"type": "uint256"
+					},
+					{
+						"internalType": "string",
+						"name": "_goodsDescription",
+						"type": "string"
 					}
 				],
 				"name": "uploadTradeData",
@@ -1636,11 +1402,11 @@
 			]
 		},
 		"FinancialTemplate.sol": {
-			"keccak256": "0xd07b4ebb708dd41f960b93c537002297c2b438c23475d1688bbe3de8522764c8",
+			"keccak256": "0x0e07219b08aa50f5d9746699f9ed4dce9a6184705d78d6d011aad49afcbdde92",
 			"license": "UNLICENSED",
 			"urls": [
-				"bzz-raw://1bca919943cbb6afbabe96507f411695f998ba2fff2dae59f8f2be5001e184c1",
-				"dweb:/ipfs/QmRBRi5MAjv7HUgzTSkoPecnpvx3yjNtqMjhQtPWkGh2s9"
+				"bzz-raw://41bf26bbd147efc5f1c1bf2362c45cd62d4dbb2564a034e1657a9132caa11d25",
+				"dweb:/ipfs/QmP55bHWAM1gpbDAs5DqbGKKq256BrZxHxtFaUAzuywLzx"
 			]
 		},
 		"hardhat/console.sol": {
